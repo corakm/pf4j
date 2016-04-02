@@ -1,14 +1,17 @@
 /*
  * Copyright 2012 Decebal Suiu
  *
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this work except in compliance with
- * the License. You may obtain a copy of the License in the LICENSE file, or at:
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
- * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
- * specific language governing permissions and limitations under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package ro.fortsoft.pf4j;
 
@@ -20,7 +23,9 @@ import ro.fortsoft.pf4j.util.AndFileFilter;
 import ro.fortsoft.pf4j.util.DirectoryFileFilter;
 import ro.fortsoft.pf4j.util.FileUtils;
 import ro.fortsoft.pf4j.util.HiddenFilter;
+import ro.fortsoft.pf4j.util.NameFileFilter;
 import ro.fortsoft.pf4j.util.NotFileFilter;
+import ro.fortsoft.pf4j.util.OrFileFilter;
 import ro.fortsoft.pf4j.util.Unzip;
 import ro.fortsoft.pf4j.util.ZipFileFilter;
 
@@ -377,10 +382,8 @@ public class DefaultPluginManager implements PluginManager {
         }
 
         // check for no plugins
-        List<FileFilter> filterList = new ArrayList<>();
-        filterList.add(new DirectoryFileFilter());
-        filterList.add(new NotFileFilter(createHiddenPluginFilter()));
-        FileFilter pluginsFilter = new AndFileFilter(filterList);
+        AndFileFilter pluginsFilter = new AndFileFilter(new DirectoryFileFilter());
+        pluginsFilter.addFileFilter(new NotFileFilter(createHiddenPluginFilter()));
         File[] directories = pluginsDirectory.listFiles(pluginsFilter);
         if (directories == null) {
         	directories = new File[0];
@@ -564,6 +567,11 @@ public class DefaultPluginManager implements PluginManager {
     }
 
     @Override
+    public ExtensionFactory getExtensionFactory() {
+        return extensionFactory;
+    }
+
+    @Override
 	public RuntimeMode getRuntimeMode() {
     	if (runtimeMode == null) {
         	// retrieves the runtime mode from system
@@ -574,9 +582,7 @@ public class DefaultPluginManager implements PluginManager {
 		return runtimeMode;
 	}
 
-    /**
-     * Retrieves the {@link PluginWrapper} that loaded the given class 'clazz'.
-     */
+    @Override
     public PluginWrapper whichPlugin(Class<?> clazz) {
         ClassLoader classLoader = clazz.getClassLoader();
         for (PluginWrapper plugin : resolvedPlugins) {
@@ -584,7 +590,6 @@ public class DefaultPluginManager implements PluginManager {
             	return plugin;
             }
         }
-        log.warn("Failed to find the plugin for {}", clazz);
 
         return null;
     }
@@ -631,7 +636,7 @@ public class DefaultPluginManager implements PluginManager {
      * Add the possibility to override the ExtensionFinder.
      */
     protected ExtensionFinder createExtensionFinder() {
-    	DefaultExtensionFinder extensionFinder = new DefaultExtensionFinder(this, extensionFactory);
+    	DefaultExtensionFinder extensionFinder = new DefaultExtensionFinder(this);
         addPluginStateListener(extensionFinder);
 
         return extensionFinder;
@@ -679,7 +684,13 @@ public class DefaultPluginManager implements PluginManager {
     }
 
     protected FileFilter createHiddenPluginFilter() {
-    	return new HiddenFilter();
+    	OrFileFilter hiddenPluginFilter = new OrFileFilter(new HiddenFilter());
+
+        if (RuntimeMode.DEVELOPMENT.equals(getRuntimeMode())) {
+            hiddenPluginFilter.addFileFilter(new NameFileFilter("target"));
+        }
+
+        return hiddenPluginFilter;
     }
 
     /**
@@ -780,7 +791,7 @@ public class DefaultPluginManager implements PluginManager {
 
         // create the plugin wrapper
         log.debug("Creating wrapper for plugin '{}'", pluginPath);
-        PluginWrapper pluginWrapper = new PluginWrapper(pluginDescriptor, pluginPath, pluginClassLoader);
+        PluginWrapper pluginWrapper = new PluginWrapper(this, pluginDescriptor, pluginPath, pluginClassLoader);
         pluginWrapper.setPluginFactory(pluginFactory);
         pluginWrapper.setRuntimeMode(getRuntimeMode());
 
