@@ -1,5 +1,6 @@
 Plugin Framework for Java (PF4J)
 =====================
+[![Join the chat at https://gitter.im/decebals/pf4j](https://badges.gitter.im/decebals/pf4j.svg)](https://gitter.im/decebals/pf4j?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 [![Travis CI Build Status](https://travis-ci.org/decebals/pf4j.png)](https://travis-ci.org/decebals/pf4j)
 [![Coverage Status](https://coveralls.io/repos/decebals/pf4j/badge.svg?branch=master&service=github)](https://coveralls.io/github/decebals/pf4j?branch=master)
 [![Maven Central](http://img.shields.io/maven-central/v/ro.fortsoft.pf4j/pf4j.svg)](http://search.maven.org/#search|ga|1|pf4j)
@@ -124,6 +125,8 @@ Plugin-Version: 0.0.1
 
 In above manifest I described a plugin with id `welcome-plugin`, with class `ro.fortsoft.pf4j.demo.welcome.WelcomePlugin`, with version `0.0.1` and with dependencies 
 to plugins `x, y, z`.
+
+**NOTE:** The plugin version must be compliant with [Semantic Versioning](http://semver.org) (PF4J uses `jsemver` as implementation for SemVer because it comes with support for comparing versions)
 
 You can define an extension point in your application using **ExtensionPoint** interface marker.
 
@@ -398,9 +401,26 @@ For example if I want to use `ServiceProviderExtensionStorage` then the value fo
 not added/enabled by default. To do this please override `createExtensionFinder` from `DefaultPluginManager`:
 ```java
 protected ExtensionFinder createExtensionFinder() {
-    return ((DefaultExtensionFinder) super.createExtensionFinder()).addServiceProviderExtensionFinder();
+    DefaultExtensionFinder extensionFinder = super.createExtensionFinder();
+    extensionFinder.addServiceProviderExtensionFinder();
+    
+    return extensionFinder;
 }
 ```
+
+Troubleshooting
+-------------------
+Below are listed some problems that may occur when attempting to use PF4J, and suggestions for solving them.
+
+- **No Extensions Found**
+
+See if you have a file `extensions.idx` in each plugin.  
+If file `extensions.idx` doesn't exist then probably it's something wrong with the annotation processing step (enable annotation processing in your IDE or in your Maven script).   
+If file `extensions.idx` exists and it's not empty then sure you have a class loader issue (you have the same extension point in two different class loader), in this situation you must remove some libraries (probably the API jar) from plugin.   
+
+If the problem persist or you want to find more info related to the extensions discovery process (e.g what interfaces/classes are loaded by each plugin, what classes are not recognized as extensions for an extension point) then you must put on `TRACE` level the logger for `PluginClassLoader` and `AbstractExtensionFinder` (see the [log4j.properties](https://github.com/decebals/pf4j/blob/master/demo/app/src/main/resources/log4j.properties) file for demo).   
+
+Are some resources on the internet related to this subject: [#82](https://github.com/decebals/pf4j/issues/82), [#64](https://github.com/decebals/pf4j/issues/64) and [No extensions found] (https://groups.google.com/forum/#!topic/pf4j/tEQXY_WpD3A).
 
 Demo
 -------------------

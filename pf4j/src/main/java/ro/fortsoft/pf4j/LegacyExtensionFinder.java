@@ -59,14 +59,7 @@ public class LegacyExtensionFinder extends AbstractExtensionFinder {
                 LegacyExtensionStorage.read(reader, bucket);
             }
 
-            if (bucket.isEmpty()) {
-                log.debug("No extensions found");
-            } else {
-                log.debug("Found possible {} extensions:", bucket.size());
-                for (String entry : bucket) {
-                    log.debug("   " + entry);
-                }
-            }
+            debugExtensions(bucket);
 
             result.put(null, bucket);
         } catch (IOException e) {
@@ -84,7 +77,7 @@ public class LegacyExtensionFinder extends AbstractExtensionFinder {
         List<PluginWrapper> plugins = pluginManager.getPlugins();
         for (PluginWrapper plugin : plugins) {
             String pluginId = plugin.getDescriptor().getPluginId();
-            log.debug("Reading extensions storage for plugin '{}'", pluginId);
+            log.debug("Reading extensions storage from plugin '{}'", pluginId);
             Set<String> bucket = new HashSet<>();
 
             try {
@@ -97,14 +90,7 @@ public class LegacyExtensionFinder extends AbstractExtensionFinder {
                     log.debug("Cannot find '{}'", getExtensionsResource());
                 }
 
-                if (bucket.isEmpty()) {
-                    log.debug("No extensions found");
-                } else {
-                    log.debug("Found possible {} extensions:", bucket.size());
-                    for (String entry : bucket) {
-                        log.debug("   " + entry);
-                    }
-                }
+                debugExtensions(bucket);
 
                 result.put(pluginId, bucket);
             } catch (IOException e) {

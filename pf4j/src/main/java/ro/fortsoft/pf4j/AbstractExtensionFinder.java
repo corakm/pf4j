@@ -30,7 +30,7 @@ import java.util.Set;
  */
 public abstract class AbstractExtensionFinder implements ExtensionFinder, PluginStateListener {
 
-    protected static final Logger log = LoggerFactory.getLogger(AbstractExtensionFinder.class);
+    private static final Logger log = LoggerFactory.getLogger(AbstractExtensionFinder.class);
 
     protected PluginManager pluginManager;
     protected volatile Map<String, Set<String>> entries; // cache by pluginId
@@ -46,60 +46,18 @@ public abstract class AbstractExtensionFinder implements ExtensionFinder, Plugin
     @Override
     @SuppressWarnings("unchecked")
 	public <T> List<ExtensionWrapper<T>> find(Class<T> type) {
-		log.debug("Finding extensions for extension point '{}'", type.getName());
+		log.debug("Finding extensions of extension point '{}'", type.getName());
         Map<String, Set<String>> entries = getEntries();
-
         List<ExtensionWrapper<T>> result = new ArrayList<>();
-        for (Map.Entry<String, Set<String>> entry : entries.entrySet()) {
-            String pluginId = entry.getKey();
 
-            if (pluginId != null) {
-                PluginWrapper pluginWrapper = pluginManager.getPlugin(pluginId);
-                if (PluginState.STARTED != pluginWrapper.getPluginState()) {
-                    continue;
-                }
-            }
+        // add extensions found in classpath
+        List<ExtensionWrapper<T>> classpathExtensions = find(type, null);
+        result.addAll(classpathExtensions);
 
-            for (String className : entry.getValue()) {
-                try {
-                    ClassLoader classLoader;
-                    if (pluginId != null) {
-                        classLoader = pluginManager.getPluginClassLoader(pluginId);
-                    } else {
-                        classLoader = getClass().getClassLoader();
-                    }
-                    log.debug("Loading class '{}' using class loader '{}'", className, classLoader);
-                    Class<?> extensionClass = classLoader.loadClass(className);
-
-                    log.debug("Checking extension type '{}'", className);
-                    if (type.isAssignableFrom(extensionClass)) {
-                        ExtensionDescriptor descriptor = new ExtensionDescriptor();
-                        int ordinal = 0;
-                        if (extensionClass.isAnnotationPresent(Extension.class)) {
-                            ordinal = extensionClass.getAnnotation(Extension.class).ordinal();
-                        }
-                        descriptor.setOrdinal(ordinal);
-                        descriptor.setExtensionClass(extensionClass);
-
-                        ExtensionWrapper extensionWrapper = new ExtensionWrapper<>(descriptor);
-                        extensionWrapper.setExtensionFactory(pluginManager.getExtensionFactory());
-                        result.add(extensionWrapper);
-                        log.debug("Added extension '{}' with ordinal {}", className, ordinal);
-                    } else {
-                        // it's too verbose the below block (uncomment if you are in trouble)
-                        /*
-                        log.warn("'{}' is not an extension for extension point '{}'", className, type.getName());
-                        ClassLoader classLoader1 = type.getClassLoader();
-                        ClassLoader classLoader2 = extensionClass.getClassLoader();
-                        if (!classLoader1.equals(classLoader2)) {
-                            log.warn("Different class loaders: '{}' and '{}'", classLoader1, classLoader2);
-                        }
-                        */
-                    }
-                } catch (ClassNotFoundException e) {
-                    log.error(e.getMessage(), e);
-                }
-            }
+        // add extensions found in each plugin
+        for (String pluginId : entries.keySet()) {
+            List<ExtensionWrapper<T>> pluginExtensions = find(type, pluginId);
+            result.addAll(pluginExtensions);
         }
 
         if (entries.isEmpty()) {
@@ -115,6 +73,108 @@ public abstract class AbstractExtensionFinder implements ExtensionFinder, Plugin
 	}
 
     @Override
+    @SuppressWarnings("unchecked")
+    public <T> List<ExtensionWrapper<T>> find(Class<T> type, String pluginId) {
+        log.debug("Finding extensions of extension point '{}' for plugin '{}'", type.getName(), pluginId);
+        List<ExtensionWrapper<T>> result = new ArrayList<>();
+
+        Set<String> classNames = findClassNames(pluginId);
+        if (classNames.isEmpty()) {
+            return result;
+        }
+
+        if (pluginId != null) {
+            PluginWrapper pluginWrapper = pluginManager.getPlugin(pluginId);
+            if (PluginState.STARTED != pluginWrapper.getPluginState()) {
+                return result;
+            }
+
+            log.trace("Checking extensions from plugin '{}'", pluginId);
+        } else {
+            log.trace("Checking extensions from classpath");
+        }
+
+        ClassLoader classLoader = (pluginId != null) ? pluginManager.getPluginClassLoader(pluginId) : getClass().getClassLoader();
+
+        for (String className : classNames) {
+            try {
+                log.debug("Loading class '{}' using class loader '{}'", className, classLoader);
+                Class<?> extensionClass = classLoader.loadClass(className);
+
+                log.debug("Checking extension type '{}'", className);
+                if (type.isAssignableFrom(extensionClass)) {
+                    ExtensionWrapper extensionWrapper = createExtensionWrapper(extensionClass);
+                    result.add(extensionWrapper);
+                    log.debug("Added extension '{}' with ordinal {}", className, extensionWrapper.getOrdinal());
+                } else {
+                    log.trace("'{}' is not an extension for extension point '{}'", className, type.getName());
+                }
+            } catch (ClassNotFoundException e) {
+                log.error(e.getMessage(), e);
+            }
+        }
+
+        if (result.isEmpty()) {
+            log.debug("No extensions found for extension point '{}'", type.getName());
+        } else {
+            log.debug("Found {} extensions for extension point '{}'", result.size(), type.getName());
+        }
+
+        // sort by "ordinal" property
+        Collections.sort(result);
+
+        return result;
+    }
+
+    @Override
+	public List<ExtensionWrapper> find(String pluginId) {
+        log.debug("Finding extensions from plugin '{}'", pluginId);
+        List<ExtensionWrapper> result = new ArrayList<>();
+
+	    Set<String> classNames = findClassNames(pluginId);
+        if (classNames.isEmpty()) {
+            return result;
+        }
+
+        if (pluginId != null) {
+            PluginWrapper pluginWrapper = pluginManager.getPlugin(pluginId);
+            if (PluginState.STARTED != pluginWrapper.getPluginState()) {
+                return result;
+            }
+
+            log.trace("Checking extensions from plugin '{}'", pluginId);
+        } else {
+            log.trace("Checking extensions from classpath");
+        }
+
+        ClassLoader classLoader = (pluginId != null) ? pluginManager.getPluginClassLoader(pluginId) : getClass().getClassLoader();
+
+        for (String className : classNames) {
+            try {
+                log.debug("Loading class '{}' using class loader '{}'", className, classLoader);
+                Class<?> extensionClass = classLoader.loadClass(className);
+
+                ExtensionWrapper extensionWrapper = createExtensionWrapper(extensionClass);
+                result.add(extensionWrapper);
+                log.debug("Added extension '{}' with ordinal {}", className, extensionWrapper.getOrdinal());
+            } catch (ClassNotFoundException e) {
+                log.error(e.getMessage(), e);
+            }
+        }
+
+        if (result.isEmpty()) {
+            log.debug("No extensions found for plugin '{}'", pluginId);
+        } else {
+            log.debug("Found {} extensions for plugin '{}'", result.size(), pluginId);
+        }
+
+        // sort by "ordinal" property
+        Collections.sort(result);
+
+        return result;
+    }
+
+    @Override
     public Set<String> findClassNames(String pluginId) {
         return getEntries().get(pluginId);
     }
@@ -124,6 +184,19 @@ public abstract class AbstractExtensionFinder implements ExtensionFinder, Plugin
         // TODO optimize (do only for some transitions)
         // clear cache
         entries = null;
+    }
+
+    protected void debugExtensions(Set<String> extensions) {
+        if (log.isDebugEnabled()) {
+            if (extensions.isEmpty()) {
+                log.debug("No extensions found");
+            } else {
+                log.debug("Found possible {} extensions:", extensions.size());
+                for (String extension : extensions) {
+                    log.debug("   " + extension);
+                }
+            }
+        }
     }
 
     private Map<String, Set<String>> readStorages() {
@@ -141,6 +214,21 @@ public abstract class AbstractExtensionFinder implements ExtensionFinder, Plugin
         }
 
         return entries;
+    }
+
+    private ExtensionWrapper createExtensionWrapper(Class<?> extensionClass) {
+        ExtensionDescriptor descriptor = new ExtensionDescriptor();
+        int ordinal = 0;
+        if (extensionClass.isAnnotationPresent(Extension.class)) {
+            ordinal = extensionClass.getAnnotation(Extension.class).ordinal();
+        }
+        descriptor.setOrdinal(ordinal);
+        descriptor.setExtensionClass(extensionClass);
+
+        ExtensionWrapper extensionWrapper = new ExtensionWrapper<>(descriptor);
+        extensionWrapper.setExtensionFactory(pluginManager.getExtensionFactory());
+
+        return extensionWrapper;
     }
 
 }

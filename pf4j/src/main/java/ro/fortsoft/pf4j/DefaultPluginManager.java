@@ -562,6 +562,29 @@ public class DefaultPluginManager implements PluginManager {
 	}
 
     @Override
+    public <T> List<T> getExtensions(Class<T> type, String pluginId) {
+        List<ExtensionWrapper<T>> extensionsWrapper = extensionFinder.find(type, pluginId);
+        List<T> extensions = new ArrayList<>(extensionsWrapper.size());
+        for (ExtensionWrapper<T> extensionWrapper : extensionsWrapper) {
+            extensions.add(extensionWrapper.getExtension());
+        }
+
+        return extensions;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public List getExtensions(String pluginId) {
+        List<ExtensionWrapper> extensionsWrapper = extensionFinder.find(pluginId);
+        List extensions = new ArrayList<>(extensionsWrapper.size());
+        for (ExtensionWrapper extensionWrapper : extensionsWrapper) {
+            extensions.add(extensionWrapper.getExtension());
+        }
+
+        return extensions;
+    }
+
+    @Override
     public Set<String> getExtensionClassNames(String pluginId) {
         return extensionFinder.findClassNames(pluginId);
     }
@@ -746,6 +769,8 @@ public class DefaultPluginManager implements PluginManager {
 
         pluginStateListeners = new ArrayList<>();
 
+        dependencyResolver = new DependencyResolver();
+
         log.info("PF4J version {} in '{}' mode", getVersion(), getRuntimeMode());
 
         pluginClasspath = createPluginClasspath();
@@ -853,7 +878,7 @@ public class DefaultPluginManager implements PluginManager {
 	}
 
 	private void resolveDependencies() throws PluginException {
-		dependencyResolver = new DependencyResolver(unresolvedPlugins);
+		dependencyResolver.resolve(unresolvedPlugins);
 		resolvedPlugins = dependencyResolver.getSortedPlugins();
         for (PluginWrapper pluginWrapper : resolvedPlugins) {
         	unresolvedPlugins.remove(pluginWrapper);
